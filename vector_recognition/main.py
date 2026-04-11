@@ -14,17 +14,29 @@ def count_holes(region):
     labeled = label(new_image)
     return np.max(labeled) - 1
 
+def count_lines(region):
+    shape = region.image.shape
+    image = region.image
+    vlines = (np.sum(image, 0) / shape[0] == 1).sum()
+    hlines = (np.sum(image, 1) / shape[1] == 1).sum()
+    return vlines, hlines
+
 def extractor(region):
     cy, cx = region.centroid_local
     cy /= region.image.shape[0]
     cx /= region.image.shape[1]
     perimeter = region.perimeter / region.image.size
     holes = count_holes(region)
-    return np.array([region.area/region.image.size, cy, cx, perimeter, holes])
+    v, h = count_lines(region)
+    v /= region.image.shape[1]
+    h /= region.image.shape[0]
+    eccentricity = region.eccentricity
+    aspect = region.image.shape[0] / region.image.shape[1]
+    return np.array([region.area / region.image.size, cy, cx, perimeter, holes, v, h, eccentricity, aspect])
 
 def classificator(region, templates):
     features = extractor(region)
-    result = ""
+    result = ''
     min_d = 10 ** 16
     for symbol, t in templates.items():
         d = ((t - features) ** 2).sum() ** 0.5
@@ -33,44 +45,45 @@ def classificator(region, templates):
             min_d = d
     return result
 
-template = imread("alphabet-small.png")[:, :, :-1]
-print(template.shape)
+template = imread('alphabet-small.png')[:, :, :3]
 template = template.sum(2)
-binary = template != 765.
+binary = template != 765
 
 labeled = label(binary)
 props = regionprops(labeled)
 
-templates = {}
 
-for region, symbol in zip(props, ["8", "0",
-                                  "A", "B", "1", "W",
-                                  "X", "*", "/", "-"]):
-    templates[symbol] = extractor(region)
+props = sorted(props, key=lambda r: r.bbox[1])
 
-print(classificator(props[0], templates))
+templates = dict()
 
-image = imread("alphabet.png")[:, :, :-1]
+for region, symbol in zip(props, ['8', '0', 'A', 'B', '1', 'W', 'X', '*', '/', '-']):
+        templates[symbol] = extractor(region)
+
+
+image = imread('alphabet.png')[:, :, :3]
 abinary = image.mean(2) > 0
 alabeled = label(abinary)
 print(np.max(alabeled))
+
 aprops = regionprops(alabeled)
-result = {}
-image_path = save_path / "out"
+atemplates = dict()
+image_path = save_path / 'out'
 image_path.mkdir(exist_ok=True)
 
-# plt.ion()
 plt.figure(figsize=(5, 7))
+
 for region in aprops:
     symbol = classificator(region, templates)
-    if symbol not in result:
-        result[symbol] = 0
-    result[symbol] += 1
+    if symbol not in atemplates:
+        atemplates[symbol] = 0
+    atemplates[symbol] += 1
     plt.cla()
-    plt.title(f"Class - {symbol}")
+    plt.title(f'class - "{symbol}"')
     plt.imshow(region.image)
-    plt.savefig(image_path / f"image_{region.label}.png")
+    plt.savefig(image_path / f'image_{region.label}.png')
 
-print(result)
+print(atemplates)
+
 plt.imshow(abinary)
 plt.show()
